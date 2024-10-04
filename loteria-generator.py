@@ -51,17 +51,15 @@ def create_image_grid(images, grid_shape=(4, 4), output_path='output_grid.png'):
 pad = 100 # pixels
 border_size = 10 # pixels
 num_cards = 3
-input_path='input/' # place all base images here
+input_path='input/' # place all base images in here
 os.makedirs('output/', exist_ok=True)
+
+# maybe you want to make alternate grid shapes
+grid_shape=(4, 4)
+n_images = grid_shape[0] * grid_shape[1]
 
 if not os.path.exists('input/'):
     raise SystemExit('ERROR: base card images must exist in input/ directory.')
-
-
-#image_paths = [f'{i}.jpg' for i in range(16)]  # Replace with your image paths
-#create_image_grid(image_paths)
-
-#image_paths = [f'input/{i}.jpg' for i in range(54)]  # Replace with your image paths
 
 image_paths = []
 for filename in os.listdir(input_path):
@@ -69,4 +67,4 @@ for filename in os.listdir(input_path):
 
 for icard in range(num_cards):
     random.shuffle(image_paths)
-    create_image_grid(image_paths[0:16], output_path=f'output/card-{icard}.png')
+    create_image_grid(image_paths[0:n_images], grid_shape=grid_shape, output_path=f'output/card-{icard}.png')
