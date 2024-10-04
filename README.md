@@ -1,9 +1,12 @@
 # loteria-generator
 generate loteria cards from custom user-supplied images
 
+## Prerequisites
+```
 pip install Pillow
 pip install numpy
-
+```
+## Usage
 Place your base images in a directory named 'input/'. Naming doesn't matter, just make sure they're images. Normal Loteria uses 54 images, so probably aim for somewhere around that
 
 Then open up loteria-generator.py and customize those inputs manually. There are no input arguments. I'm not gonna hold your hand!
