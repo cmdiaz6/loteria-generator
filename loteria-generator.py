@@ -16,19 +16,39 @@ def create_image_grid(images, grid_shape=(4, 4), output_path='output_grid.png'):
 
     with Image.open(images[0]) as img:
         width, height = img.size
-    print('image size:', str(width) + 'x' + str(height))
+    print('first image size:', str(width) + 'x' + str(height))
+    print('Note: other images will be resized to fit this aspect ratio')
 
-    for file in images:
-        with Image.open(file) as img:
-            resized_img = img.resize((width, height))
-            resized_img.save(file)
+    # set up optional header
+    # TODO: find a better way to look for header
+    header_file='header.jpg'
+    if os.path.exists('header.jpg'):
+        print_header = True
+        with Image.open(header_file) as img:
+            # get dims to resize header
+            orig_width, orig_height = img.size
+            header_width = grid_shape[1] * width + (grid_shape[1] - 1) * pad # resize to width of page
+            header_height = int( (header_width / orig_width) * orig_height ) # maintain aspect ratio
+            print('header dims',header_width,header_height)
+
+            header_offset = header_height + pad
+    else:
+        print_header = False
+        header_offset = 0
+
 
     # Create a new blank image for the grid
-    #grid_image = Image.new('RGB', (width * grid_shape[1], height * grid_shape[0]))
     full_width  = (width  + pad) * grid_shape[1] + pad
-    full_height = (height + pad) * grid_shape[0] + pad
+    full_height = (height + pad) * grid_shape[0] + pad + header_offset
     print('full card size:', str(full_width) + 'x' + str(full_height))
     grid_image = Image.new('RGB', (full_width , full_height), color='white')
+    full_width  = (width  + pad) * grid_shape[1] + pad
+
+    # optional header pt 2: resize and paste
+    if print_header:
+        with Image.open(header_file) as img:
+            resized_img = img.resize((header_width, header_height))
+            grid_image.paste(resized_img, (pad, pad))
 
     # Paste images into the grid
     for i in range(grid_shape[0]):
@@ -36,11 +56,15 @@ def create_image_grid(images, grid_shape=(4, 4), output_path='output_grid.png'):
             index = i * grid_shape[1] + j
             img = Image.open(images[index])
 
-            # resize to make room for border
-            resized_img = img.resize((width - 2*border_size, height - 2*border_size))
-            img = ImageOps.expand(resized_img, border=border_size, fill='black')
+            # resize to match first image dims
+            # NOTE: This does NOT preserve aspect ratio, so keep images in similar ratios
+            img = img.resize((width, height))
 
-            grid_image.paste(img, (j * (width + pad) + pad, i * (height + pad) + pad))
+            # resize to make room for border
+            img = img.resize((width - 2*border_size, height - 2*border_size))
+            img = ImageOps.expand(img, border=border_size, fill='black')
+
+            grid_image.paste(img, (j * (width + pad) + pad, i * (height + pad) + pad + header_offset))
 
     # Save the grid image
     grid_image.save(output_path)
