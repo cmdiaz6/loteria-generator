@@ -13,5 +13,6 @@ Then open up loteria-generator.py and customize those inputs manually. There are
 
 modify num_cards to change how many cards get generated. it's set at 3 now for testing. also feel free to change the gaps between each card and the border size. That's in there somewhere too
 
+To add a header image to the top add a file named header.jpg in the same directory as the python script.
 
 Outputs will appear as if by miraculous sorcery in an 'output/' directory
