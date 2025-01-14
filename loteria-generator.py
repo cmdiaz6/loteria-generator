@@ -3,9 +3,9 @@
 import os
 import random
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFont, ImageDraw
 
-def create_image_grid(images, grid_shape=(4, 4), output_path='output_grid.png'):
+def create_image_grid(images, grid_shape=(4, 4), output_path='output_grid.png', cardnum=-1):
     # Check if we have the correct number of images
     if len(images) != grid_shape[0] * grid_shape[1]:
         raise ValueError(f"Expected {grid_shape[0] * grid_shape[1]} images, but got {len(images)}")
@@ -40,6 +40,8 @@ def create_image_grid(images, grid_shape=(4, 4), output_path='output_grid.png'):
     # Create a new blank image for the grid
     full_width  = (width  + pad) * grid_shape[1] + pad
     full_height = (height + pad) * grid_shape[0] + pad + header_offset
+    if cardnum > -1:
+        full_height += 12 # more room for card number
     print('full card size:', str(full_width) + 'x' + str(full_height))
     grid_image = Image.new('RGB', (full_width , full_height), color='white')
     full_width  = (width  + pad) * grid_shape[1] + pad
@@ -66,19 +68,38 @@ def create_image_grid(images, grid_shape=(4, 4), output_path='output_grid.png'):
 
             grid_image.paste(img, (j * (width + pad) + pad, i * (height + pad) + pad + header_offset))
 
+    # print card number to the bottom corner
+    if cardnum > -1:
+        draw = ImageDraw.Draw(grid_image)
+
+        fontsize = int(2*(pad+12)/3)
+        try:
+            font = ImageFont.truetype( "DejaVuSansMono.ttf", fontsize )
+        except:
+            print("Font not found. Using default Pillow font")
+            font = ImageFont.load_default()
+
+        text_length = draw.textlength( str(cardnum).zfill(4), font=font)
+    
+        text_x = full_width  - text_length  - int(pad/2)
+        text_y = full_height - int((fontsize)/3) - fontsize
+        draw.text((text_x, text_y), str(cardnum).zfill(4), fill="black", font=font)
+
     # Save the grid image
     grid_image.save(output_path)
     print(f'Grid image saved to {output_path}')
 
 
 # Defaults
-pad = 100 # pixels
-border_size = 10 # pixels
-num_cards = 3
+pad = 20 # pixels between images and edges
+#border_size = 10 # pixels for image borders. currently black
+border_size = 0 # pixels for image borders. currently black
+num_cards = 20
 input_path='input/' # place all base images in here
 os.makedirs('output/', exist_ok=True)
 
 # maybe you want to make alternate grid shapes
+#grid_shape=(9, 6) # all 54 cards on 1 page
 grid_shape=(4, 4)
 n_images = grid_shape[0] * grid_shape[1]
 
@@ -89,6 +110,22 @@ image_paths = []
 for filename in os.listdir(input_path):
     image_paths.append(input_path + filename)
 
+# count how many times each image appears
+image_count = {}
+for key in image_paths:
+    image_count[key] = 0
+
 for icard in range(num_cards):
     random.shuffle(image_paths)
-    create_image_grid(image_paths[0:n_images], grid_shape=grid_shape, output_path=f'output/card-{icard}.png')
+    #create_image_grid(image_paths[0:n_images], grid_shape=grid_shape, output_path=f'output/card-{icard}.png')  # no card numbers
+    create_image_grid(image_paths[0:n_images], grid_shape=grid_shape, output_path=f'output/card-{icard}.png', cardnum=icard)
+
+    # count how many times each image appears
+    for key in image_paths[0:n_images]:
+        image_count[key] += 1
+
+# prints stats for how many times each image appeared
+print("TOTAL CARDS:",num_cards)
+print("Stats on each image's frequency:")
+for key in sorted( image_count, key=image_count.get):
+    print( " ", key, "@", image_count[key] )
