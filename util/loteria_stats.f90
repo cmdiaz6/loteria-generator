@@ -66,10 +66,10 @@ end module
 program loteria_stats
     use loteria_functions
     implicit none
-    integer, allocatable :: cards(:,:,:)
+    integer, allocatable :: cards(:,:,:), free_list(:)
     logical, allocatable :: card_hits(:,:,:), used_cards(:)
-    integer :: icard, iboard, irow, icol, inum, ierr
-    integer :: iwinner, num_calls
+    integer :: icard, iboard, irow, icol, inum, ipos, ierr
+    integer :: iwinner, num_calls, ncards_left
     logical :: win
 
     !inputs
@@ -100,6 +100,8 @@ program loteria_stats
     if (ierr /=0) print *, 'ERROR: allocating card_hits'
     allocate( used_cards( ncards), stat=ierr )
     if (ierr /=0) print *, 'ERROR: allocating used_cards'
+    allocate( free_list( ncards), stat=ierr )
+    if (ierr /=0) print *, 'ERROR: allocating free_list'
 
     allocate( win_counts(ngames), stat=ierr )
     if (ierr /=0) print *, 'ERROR: allocating ngames'
@@ -111,42 +113,61 @@ program loteria_stats
         cards(:,:,:) = 0
         card_hits(:,:,:) = .false.
         used_cards(:) = .false.
+        win = .false.
 
         ! fill cards randomly
         do iboard = 1,nboards
+            ! keep track of used calls
+            do icard = 1, ncards
+                free_list(icard) = icard
+            end do
+            ncards_left = ncards
+
             do irow = 1, 4
                 do icol = 1, 4
-                    do
-                        ! pick a number
-                        inum = random_card( ncards )
-                        ! if it's already picked try a new number
-                        ! todo: optimize this by popping used options out of an array like in the secret santa program
-                        if ( any(cards(:,:,iboard) == inum) ) then
-                            !print *, iboard, 'oops! hit the same number', inum, 'trying again'
-                            cycle
-                        else
-                            cards( icol, irow, iboard ) = inum
-                            exit
-                        end if
 
-                    end do
+                    ncards_left = ncards + 1 - ( (irow-1)*4 + icol )
+                    ! call random number from 1 to however many calls are left
+                    ipos = random_card( ncards_left )
+                    inum = free_list( ipos )
+
+                    ! fill board
+                    cards( icol, irow, iboard ) = inum
+
+                    ! update list of free cards. move last card to free'd spot
+                    if ( icard /= ncards_left ) then
+                      free_list(ipos) = free_list(ncards_left)
+                    end if
+                    free_list(ncards_left) = 0
+                    !write(6,'(54I3)') free_list
+
                 end do
             end do
-            !print *, iboard, ' - output: ', cards(iboard,:,:)
         end do
+
+        ! keep track of used calls
+        do icard = 1, ncards
+            free_list(icard) = icard
+        end do
+        ncards_left = ncards
 
         ! loop over card calls
         cardloop: do icard = 1,ncards
-            ! call random number from 1 to 54
-            do
-                inum = random_card( ncards )
-                if ( used_cards(inum) ) then
-                    cycle ! try again
-                else
-                    used_cards(inum) = .true.
-                    exit
-                end if
-            end do
+
+            ! call random number from 1 to however many calls are left
+            ncards_left = ncards - icard + 1
+            ipos = random_card( ncards_left ) ! get random position in free_list
+            inum = free_list(ipos)            ! card number stored in free_list
+            if (inum == 0) then
+                print *,'ERROR: free_list(ipos) =',inum
+                print *,'ipos=',ipos
+            end if
+
+            ! update list of free cards. move last card to free'd spot
+            if ( inum /= ncards_left ) then
+              free_list(ipos) = free_list(ncards_left)
+            end if
+            free_list(ncards_left) = 0
 
             ! loop over all boards
             do iboard = 1, nboards
@@ -174,16 +195,26 @@ program loteria_stats
                     print *, 'ERROR: win_condition ', win_condition, ' does not exist'
                 end select
 
+                !print *,'--- board',iboard,'---'
+                !do irow = 1, 4
+                !    if (iboard==1) write(6,*) (card_hits( icol, irow, iboard ), icol = 1, 4)
+                !end do
+
                 if (win) then
                     iwinner = iboard
                     num_calls = icard
                     !print *,'someone won in',num_calls
-                    !print *,cards(:,:,iboard)
-                    !print *,used_cards(:)
+                    !write(6,'(54I3)') used_cards(:)
                     exit cardloop
                 end if
             end do
         end do cardloop
+
+        if (.not. win) then
+            print *,'ERROR: no one won'
+            print *,num_calls
+            stop
+        end if
 
         win_counts(igame) = num_calls
 
@@ -191,7 +222,6 @@ program loteria_stats
 
 
     ! print stats
-    !print *, win_counts(:)
     print *, 'win condition:   ', win_condition
     print *, 'number of games: ', ngames
 
@@ -208,9 +238,7 @@ program loteria_stats
     print *,'1 std dev', avg-stddev/2, ' to ', avg+stddev/2, ' (68% of cases)'
     print *,'2 std dev', avg-stddev,   ' to ', avg+stddev,   ' (95% of cases)'
 
-
-
-    ! write to file for plotting
+    ! write to file for plotting later
     open(newunit=iunit, file='WIN_COUNTS.txt', form='formatted', status='unknown')
     rewind(iunit)
     write(iunit,*) win_counts(:)
