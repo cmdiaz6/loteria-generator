@@ -1,12 +1,30 @@
 module loteria_functions
+    implicit none
     contains
+
+        subroutine tick(t)
+            integer, intent(OUT) :: t
+            call system_clock(t)
+        end subroutine
+        real function tock(t)
+            integer, intent(in) :: t
+            integer :: now
+            integer :: clock_rate, clock_max
+
+            call system_clock(now,count_rate=clock_rate,count_max=clock_max)
+            if (now<t) then
+                tock = real(clock_max - (now - t))/real(clock_rate)
+            else
+                tock = real(now - t)/real(clock_rate)
+            end if
+        end function
+
         function random_card( ncards ) result( irand )
             implicit none
             integer, intent(IN) :: ncards
             integer :: irand
             real :: rrand
 
-            call random_seed()
             call random_number( rrand )
             irand = int( rrand * ncards ) + 1
         end function
@@ -69,7 +87,8 @@ program loteria_stats
     integer, allocatable :: cards(:,:,:), free_list(:)
     logical, allocatable :: card_hits(:,:,:), used_cards(:)
     integer :: icard, iboard, irow, icol, inum, ipos, ierr
-    integer :: iwinner, num_calls, ncards_left
+    integer :: iwinner, num_calls, ncards_left, check_start
+    integer :: ncardsp1, ntmp
     logical :: win
 
     !inputs
@@ -83,7 +102,14 @@ program loteria_stats
     integer :: igame, iunit
     real    :: avg, stddev
 
+    ! timings
+    integer :: itime, itime2
+    real    :: fill_time, check_time, random_time
+
     namelist /input_data/ win_condition, nboards, ngames, ncards
+
+    ! initialize rng
+    call random_seed()
 
     !win_condition='any_four'
     open(newunit=iunit,file=input_file,iostat=ierr)
@@ -91,7 +117,7 @@ program loteria_stats
     read(unit=iunit, nml=input_data)
     if (ierr /=0) print *, 'ERROR: error reading namelist',input_file
     close(iunit)
-    print *, 'inputs:',win_condition, nboards, ngames, ncards
+    write(6,'(A,I10,3A,I5,A)') 'Running ',ngames,' simulations of ', win_condition, ' Loteria with ', nboards,' players'
 
 
     allocate( cards( 4, 4, nboards), stat=ierr )
@@ -107,6 +133,21 @@ program loteria_stats
     if (ierr /=0) print *, 'ERROR: allocating ngames'
     win_counts(:) = 0
 
+    ! don't bother checking if you don't have the minimum calls needed
+    select case ( trim(win_condition) )
+    case ('any_four', 'corners')
+        check_start = 4
+    case ('blackout')
+        check_start = 16
+    case default
+        check_start = 1
+    end select
+
+    fill_time  = 0.0
+    check_time = 0.0
+    random_time = 0.0
+
+    ncardsp1 = ncards + 1
 
     gameloop: do igame = 1, ngames
 
@@ -115,6 +156,7 @@ program loteria_stats
         used_cards(:) = .false.
         win = .false.
 
+        call tick(itime)
         ! fill cards randomly
         do iboard = 1,nboards
             ! keep track of used calls
@@ -124,26 +166,33 @@ program loteria_stats
             ncards_left = ncards
 
             do irow = 1, 4
+                ntmp = ncardsp1 - (irow-1)*4
                 do icol = 1, 4
 
-                    ncards_left = ncards + 1 - ( (irow-1)*4 + icol )
+                    !ncards_left = nc1 - ( (irow-1)*4 + icol )
+                    ncards_left = ntmp - icol
                     ! call random number from 1 to however many calls are left
+                    call tick(itime2)
                     ipos = random_card( ncards_left )
-                    inum = free_list( ipos )
+                    random_time = random_time + tock(itime2)
 
                     ! fill board
-                    cards( icol, irow, iboard ) = inum
+                    cards( icol, irow, iboard ) = free_list( ipos )
 
                     ! update list of free cards. move last card to free'd spot
-                    if ( icard /= ncards_left ) then
-                      free_list(ipos) = free_list(ncards_left)
-                    end if
+                    if ( icard /= ncards_left ) free_list(ipos) = free_list(ncards_left)
                     free_list(ncards_left) = 0
                     !write(6,'(54I3)') free_list
 
+                    !ncards_left = ncards_left - 1
+
                 end do
             end do
-        end do
+        end do ! nboards
+        
+        fill_time = fill_time + tock(itime)
+        call tick(itime)
+
 
         ! keep track of used calls
         do icard = 1, ncards
@@ -182,18 +231,19 @@ program loteria_stats
                   end do
                 end do rowloop
 
-
                 ! check if card matches winning conditions
-                select case ( trim(win_condition) )
-                case ('any_four')
-                    win = check_anyfour( card_hits(:,:,iboard) )
-                case ('blackout')
-                    win = check_blackout( card_hits(:,:,iboard) )
-                case ('corners')
-                    win = check_corners( card_hits(:,:,iboard) )
-                case default
-                    print *, 'ERROR: win_condition ', win_condition, ' does not exist'
-                end select
+                if ( icard >= check_start ) then
+                    select case ( trim(win_condition) )
+                    case ('any_four')
+                        win = check_anyfour(  card_hits(:,:,iboard) )
+                    case ('blackout')
+                        win = check_blackout( card_hits(:,:,iboard) )
+                    case ('corners')
+                        win = check_corners(  card_hits(:,:,iboard) )
+                    case default
+                        print *, 'ERROR: win_condition ', win_condition, ' does not exist'
+                    end select
+                end if
 
                 !print *,'--- board',iboard,'---'
                 !do irow = 1, 4
@@ -207,8 +257,11 @@ program loteria_stats
                     !write(6,'(54I3)') used_cards(:)
                     exit cardloop
                 end if
-            end do
+            end do ! nboards
+
         end do cardloop
+
+        check_time = check_time + tock(itime)
 
         if (.not. win) then
             print *,'ERROR: no one won'
@@ -222,11 +275,10 @@ program loteria_stats
 
 
     ! print stats
-    print *, 'win condition:   ', win_condition
-    print *, 'number of games: ', ngames
-
     avg = 1.d0 * sum(win_counts) / ngames
-    print *, 'Average win time:', avg
+    print *,'RESULTS'
+    write(6,'(A,F10.2)') 'Average win time:', avg
+    write(6,'(A,F10.2)') 
 
     ! std dev
     stddev = 0.0d0
@@ -235,14 +287,21 @@ program loteria_stats
     end do
     stddev = sqrt(stddev/(ngames-1))
 
-    print *,'1 std dev', avg-stddev/2, ' to ', avg+stddev/2, ' (68% of cases)'
-    print *,'2 std dev', avg-stddev,   ' to ', avg+stddev,   ' (95% of cases)'
+    write(6,'(A,F10.2,A,F10.2,A)') '1 std dev ', avg-stddev/2, ' to ', avg+stddev/2, ' (68% of cases)'
+    write(6,'(A,F10.2,A,F10.2,A)') '2 std dev ', avg-stddev,   ' to ', avg+stddev,   ' (95% of cases)'
+
+    ! print timings
+    !print *,''
+    !print *,'TIMINGS'
+    !write(6,'(A,F10.2)') 'fill time ', fill_time
+    !write(6,'(A,F10.2)') 'check time', check_time 
+    !write(6,'(A,F10.2)') 'random time', random_time 
 
     ! write to file for plotting later
-    open(newunit=iunit, file='WIN_COUNTS.txt', form='formatted', status='unknown')
-    rewind(iunit)
-    write(iunit,*) win_counts(:)
-    close(iunit)
+    !open(newunit=iunit, file='WIN_COUNTS.txt', form='formatted', status='unknown')
+    !rewind(iunit)
+    !write(iunit,*) win_counts(:)
+    !close(iunit)
 
 
 end program
