@@ -98,7 +98,7 @@ program loteria_stats
     integer :: nboards, ncards, ngames
 
     ! stats
-    integer, allocatable :: win_counts(:)
+    integer, allocatable :: win_counts(:), bins(:)
     integer :: igame, iunit
     real    :: avg, stddev
 
@@ -297,11 +297,22 @@ program loteria_stats
     !write(6,'(A,F10.2)') 'check time', check_time 
     !write(6,'(A,F10.2)') 'random time', random_time 
 
-    ! write to file for plotting later
-    !open(newunit=iunit, file='WIN_COUNTS.txt', form='formatted', status='unknown')
-    !rewind(iunit)
-    !write(iunit,*) win_counts(:)
-    !close(iunit)
+    ! create bins for plotting
+    allocate( bins(ngames), stat=ierr )
+    if (ierr /=0) print *, 'ERROR: allocating bins'
+    bins(:) = 0
+    do igame = 1, ngames
+      num_calls = win_counts(igame)
+      bins(num_calls) = bins(num_calls) + 1
+    end do
 
+    open(newunit=iunit, file='WIN_COUNTS.txt', form='formatted', status='unknown')
+    rewind(iunit)
+    write(iunit,*) 'calls  #_wins'
+    do icard = 1, ncards
+      write(iunit,*) icard, bins(icard)
+    end do
+    close(iunit)
 
+    ! bye
 end program
